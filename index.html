@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบตรวจสอบค่าเช่า - หอพักสมบัติ</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS Style -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="toast-container"></div>
+
+    <div id="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-logo">
+                <i class="fa-solid fa-house-chimney-user logo-icon"></i>
+                <div class="logo-text">
+                    <h1>หอพักสมบัติ</h1>
+                    <span>ระบบตรวจสอบค่าเช่าสำหรับผู้เช่า</span>
+                </div>
+            </div>
+            <button id="logout-btn" class="btn btn-secondary btn-sm" style="display: none;">
+                <i class="fa-solid fa-right-from-bracket"></i> ออกจากระบบ
+            </button>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="main-workspace">
+            <!-- Login View -->
+            <div id="login-view" class="glass-panel centered-panel">
+                <div class="login-header">
+                    <i class="fa-solid fa-user-lock login-icon"></i>
+                    <h2>เข้าสู่ระบบตรวจสอบค่าเช่า</h2>
+                    <p>กรอกเลขบัตรประชาชน 13 หลัก ของผู้เช่าหลักเพื่อเข้าตรวจสอบบิลของท่าน</p>
+                </div>
+                <form id="tenant-login-form">
+                    <div class="form-group">
+                        <label for="idcard-input">เลขบัตรประชาชน</label>
+                        <input type="text" id="idcard-input" class="form-control" required placeholder="ป้อนเลขบัตรประชาชน 13 หลัก" autocomplete="off" maxlength="20">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full" id="btn-submit-login">
+                        <i class="fa-solid fa-right-to-bracket"></i> ตรวจสอบค่าเช่าห้องพัก
+                    </button>
+                </form>
+            </div>
+
+            <!-- Invoice View (Hidden by default) -->
+            <div id="invoice-view" style="display: none; max-width: 700px; margin: 0 auto; width: 100%;">
+                <!-- Dynamic profile card -->
+                <div class="glass-panel profile-card" style="margin-bottom: 1.5rem;">
+                    <div class="profile-avatar">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <div class="profile-info">
+                        <h2 id="display-tenant-name">คุณผู้เช่า</h2>
+                        <p><strong>ห้องพัก:</strong> <span id="display-room-name" class="role-badge badge-admin">-</span> | <strong>เบอร์โทร:</strong> <span id="display-tenant-tel">-</span></p>
+                    </div>
+                </div>
+
+                <!-- Invoice Details glass card -->
+                <div class="glass-panel" style="margin-bottom: 2rem;">
+                    <div class="invoice-title-bar">
+                        <h3><i class="fa-solid fa-receipt"></i> ใบแจ้งหนี้ประจำเดือน</h3>
+                        <div id="display-invoice-month" class="role-badge badge-guest">-</div>
+                    </div>
+
+                    <!-- Details of Billing -->
+                    <div class="bill-summary-list" style="margin-top: 1.5rem;">
+                        <div class="bill-item">
+                            <span class="bill-item-name">ค่าเช่าห้องพัก (Base Room Rent)</span>
+                            <span class="bill-item-val" id="val-rent">฿0.00</span>
+                        </div>
+                        <div class="bill-item" id="val-air-container" style="display: none;">
+                            <span class="bill-item-name">ค่าปรับอากาศ (Air Conditioner)</span>
+                            <span class="bill-item-val" id="val-air">฿0.00</span>
+                        </div>
+                        <div class="bill-item">
+                            <span class="bill-item-name">ค่าน้ำประปา (<span id="water-readings">-</span>)</span>
+                            <span class="bill-item-val" id="val-water">฿0.00</span>
+                        </div>
+                        <div class="bill-item">
+                            <span class="bill-item-name">ค่าไฟฟ้า (<span id="elec-readings">-</span>)</span>
+                            <span class="bill-item-val" id="val-elec">฿0.00</span>
+                        </div>
+                        <div class="bill-item">
+                            <span class="bill-item-name">ค่าขยะรายเดือน</span>
+                            <span class="bill-item-val" id="val-trash">฿0.00</span>
+                        </div>
+                        <div class="bill-item" id="val-fine-container" style="display: none;">
+                            <span class="bill-item-name" style="color:var(--danger);">ค่าปรับค้างชำระ / ค่าปรับตกแต่ง</span>
+                            <span class="bill-item-val" id="val-fine" style="color:var(--danger);">฿0.00</span>
+                        </div>
+                        
+                        <div class="bill-total-row">
+                            <span>ยอดรวมสุทธิทั้งสิ้น (Total Net Due)</span>
+                            <span id="val-total">฿0.00</span>
+                        </div>
+                        
+                        <div class="payment-status-row" id="payment-status-wrapper">
+                            <span>สถานะการชำระเงิน</span>
+                            <span class="badge-unpaid" id="display-payment-status">ค้างชำระ</span>
+                        </div>
+
+                        <!-- Date Paid info if Paid -->
+                        <div class="bill-item" id="val-datepaid-container" style="display: none; border-top:none; padding-top:0;">
+                            <span class="bill-item-name" style="color:var(--success);">ชำระเงินเมื่อวันที่</span>
+                            <span class="bill-item-val" id="val-datepaid" style="color:var(--success); font-weight:600;">-</span>
+                        </div>
+                    </div>
+
+                    <!-- Payment Transfer Instruction -->
+                    <div class="payment-instructions" style="margin-top: 2rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                        <h4 style="color:#fff; margin-bottom: 0.5rem;"><i class="fa-solid fa-circle-info"></i> ช่องทางการชำระเงิน</h4>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                            กรุณาโอนเงินเข้าบัญชีธนาคาร <strong>กสิกรไทย (K-Bank)</strong><br>
+                            เลขที่บัญชี: <strong>080-X-XXXXX-X</strong> ชื่อบัญชี: <strong>นายสมบัติ น้ำวน</strong><br>
+                            * แจ้งหลักฐานการโอนทาง Line หรือติดต่อเบอร์โทร 080-5991691 ภายในวันที่ 5 ของเดือน
+                        </p>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem;">
+                        <button class="btn btn-primary" id="btn-print-bill" style="flex-grow:1;">
+                            <i class="fa-solid fa-print"></i> พิมพ์ใบแจ้งหนี้ / ใบเสร็จ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Print Slip Area (Only visible on paper) -->
+    <div id="print-receipt-area" class="print-only"></div>
+
+    <!-- JS Files -->
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

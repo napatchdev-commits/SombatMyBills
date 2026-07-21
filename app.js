@@ -308,18 +308,33 @@ class MyBillsApp {
     const tenant = this.currentTenant;
     const rooms = this.state.rooms || [];
     const invoices = this.state.invoices || [];
+    const tenants = this.state.tenants || [];
 
-    const room = rooms.find(r => r.id === tenant.assignedRoomId || (r.currentTenantName && r.currentTenantName === tenant.name)) || { id: tenant.assignedRoomId || 's101', name: 'S101', floor: 1, baseRent: 2500 };
+    const room = rooms.find(r => r.id === tenant.assignedRoomId || (r.name && tenant.assignedRoomId && r.name.toLowerCase() === tenant.assignedRoomId.toLowerCase())) || { id: tenant.assignedRoomId || 's101', name: 'S101', floor: 1, baseRent: 2500 };
     
-    // Strictly filter invoices for THIS room & tenant
+    // Find invoice for THIS room (by roomId or roomName)
     const roomInvoices = invoices.filter(i => 
-      i.roomId === room.id && 
-      (i.tenantId === tenant.id || (i.tenantName && tenant.name && i.tenantName.trim().toLowerCase() === tenant.name.trim().toLowerCase()))
+      (i.roomId && (i.roomId === room.id || i.roomId.toLowerCase() === room.id.toLowerCase())) ||
+      (i.roomName && room.name && i.roomName.trim().toLowerCase() === room.name.trim().toLowerCase())
     );
     
     const monthKey = new Date().toISOString().slice(0, 7);
-    
     let latestInvoice = roomInvoices.length > 0 ? roomInvoices[roomInvoices.length - 1] : null;
+
+    // Resolve tenant real name
+    let realTenantName = '';
+    if (latestInvoice && latestInvoice.tenantName && !latestInvoice.tenantName.includes('มีผู้เช่า')) {
+      realTenantName = latestInvoice.tenantName;
+    } else if (room.currentTenantName && room.currentTenantName !== 'ไม่มีผู้เข้าเช่า' && !room.currentTenantName.includes('มีผู้เช่า')) {
+      realTenantName = room.currentTenantName;
+    } else {
+      const tenantMatch = tenants.find(t => t.assignedRoomId === room.id && t.name && !t.name.includes('มีผู้เช่า'));
+      if (tenantMatch) realTenantName = tenantMatch.name;
+    }
+    if (!realTenantName) {
+      realTenantName = 'ผู้เช่าห้อง ' + (room.name || 'S101');
+    }
+
     if (!latestInvoice) {
       const rentAmt = room.baseRent || 2500;
       const elecAmt = 520;
@@ -333,11 +348,11 @@ class MyBillsApp {
         monthKey: monthKey,
         roomId: room.id || 's101',
         roomName: room.name || 'S101',
-        tenantName: tenant.name,
+        tenantName: realTenantName,
         issueDate: new Date().toISOString().slice(0, 10),
         dueDate: `${monthKey}-05`,
-        elecPrev: 1000, elecCurr: 1065, elecAmount: elecAmt,
-        waterPrev: 100, waterCurr: 110, waterAmount: waterAmt,
+        elecPrev: room.lastElecMeter || 1000, elecCurr: (room.lastElecMeter || 1000) + 65, elecAmount: elecAmt,
+        waterPrev: room.lastWaterMeter || 100, waterCurr: (room.lastWaterMeter || 100) + 10, waterAmount: waterAmt,
         rentAmount: rentAmt,
         trashFee: trashAmt,
         totalAmount: totalAmt,
@@ -345,8 +360,11 @@ class MyBillsApp {
         outstandingAmount: totalAmt,
         status: 'unpaid'
       };
+    } else {
+      latestInvoice.tenantName = realTenantName;
     }
 
+    tenant.name = realTenantName;
     const isPaid = latestInvoice.status === 'paid';
     const amountToPay = latestInvoice.outstandingAmount || latestInvoice.totalAmount;
 
@@ -355,7 +373,7 @@ class MyBillsApp {
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:1rem; margin-bottom:1.25rem;">
           <div>
             <span class="badge-pill badge-primary" style="font-size:0.8rem;"><i class="fa-solid fa-house-user"></i> ห้อง ${room.name || 'S101'} (ชั้น ${room.floor || 1})</span>
-            <h2 style="font-size:1.25rem; font-weight:800; color:#0f172a; margin-top:0.35rem;">${tenant.name}</h2>
+            <h2 style="font-size:1.25rem; font-weight:800; color:#0f172a; margin-top:0.35rem;">${realTenantName}</h2>
           </div>
           <button id="btn-tenant-logout" class="btn btn-secondary btn-sm" style="border-radius:8px;" title="ออกจากระบบ">
             <i class="fa-solid fa-right-from-bracket text-danger"></i> ออกจากระบบ

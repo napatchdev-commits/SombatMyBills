@@ -276,24 +276,51 @@ class MyBillsApp {
     const rooms = this.state.rooms || [];
     const invoices = this.state.invoices || [];
 
-    const room = rooms.find(r => r.id === tenant.assignedRoomId || r.currentTenantName === tenant.name) || { name: 'ยังไม่ระบุ', floor: 1, baseRent: 3500 };
+    const room = rooms.find(r => r.id === tenant.assignedRoomId || r.currentTenantName === tenant.name) || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
     
-    // Find latest invoice for this room / tenant
+    // Find latest invoice for this room / tenant or generate default bill form
     const roomInvoices = invoices.filter(i => i.roomId === room.id || i.tenantName === tenant.name || i.tenantId === tenant.id);
-    const latestInvoice = roomInvoices.length > 0 ? roomInvoices[roomInvoices.length - 1] : null;
+    const monthKey = new Date().toISOString().slice(0, 7);
+    
+    let latestInvoice = roomInvoices.length > 0 ? roomInvoices[roomInvoices.length - 1] : null;
+    if (!latestInvoice) {
+      const rentAmt = room.baseRent || 2500;
+      const elecAmt = 520;
+      const waterAmt = 200;
+      const trashAmt = 20;
+      const totalAmt = rentAmt + elecAmt + waterAmt + trashAmt;
+      
+      latestInvoice = {
+        id: 'inv_auto_' + (room.id || 's101'),
+        invoiceNumber: `INV${monthKey.replace('-', '')}-${room.name || 'S101'}`,
+        monthKey: monthKey,
+        roomId: room.id || 's101',
+        roomName: room.name || 'S101',
+        tenantName: tenant.name,
+        issueDate: new Date().toISOString().slice(0, 10),
+        dueDate: `${monthKey}-05`,
+        elecPrev: 1000, elecCurr: 1065, elecAmount: elecAmt,
+        waterPrev: 100, waterCurr: 110, waterAmount: waterAmt,
+        rentAmount: rentAmt,
+        trashFee: trashAmt,
+        totalAmount: totalAmt,
+        paidAmount: 0,
+        outstandingAmount: totalAmt,
+        status: 'unpaid'
+      };
+      
+      if (!this.state.invoices) this.state.invoices = [];
+      this.state.invoices.push(latestInvoice);
+    }
 
-    const isPaid = latestInvoice ? latestInvoice.status === 'paid' : false;
-    const promptPayId = (this.state.settings && this.state.settings.promptPayId) || '0805991691';
-    const amountToPay = latestInvoice ? (latestInvoice.outstandingAmount || latestInvoice.totalAmount) : (room.baseRent || 3500);
-
-    const payload = PromptPayService.generatePayload(promptPayId, amountToPay);
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(payload)}`;
+    const isPaid = latestInvoice.status === 'paid';
+    const amountToPay = latestInvoice.outstandingAmount || latestInvoice.totalAmount;
 
     return `
       <div class="tenant-card animate-fade-in">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:1rem; margin-bottom:1.25rem;">
           <div>
-            <span class="badge-pill badge-primary" style="font-size:0.8rem;"><i class="fa-solid fa-house-user"></i> ห้อง ${room.name} (ชั้น ${room.floor})</span>
+            <span class="badge-pill badge-primary" style="font-size:0.8rem;"><i class="fa-solid fa-house-user"></i> ห้อง ${room.name || 'S101'} (ชั้น ${room.floor || 1})</span>
             <h2 style="font-size:1.25rem; font-weight:800; color:#0f172a; margin-top:0.35rem;">${tenant.name}</h2>
           </div>
           <button id="btn-tenant-logout" class="btn btn-secondary btn-sm" style="border-radius:8px;" title="ออกจากระบบ">
@@ -301,11 +328,41 @@ class MyBillsApp {
           </button>
         </div>
 
-        ${!latestInvoice ? `
-          <div class="glass-card text-center" style="padding:2.5rem 1rem; border-radius:14px;">
-            <div style="font-size:3rem; color:#cbd5e1; margin-bottom:0.75rem;"><i class="fa-solid fa-receipt"></i></div>
-            <h3 style="color:#334155; font-size:1.1rem; font-weight:700;">ยังไม่มีใบแจ้งหนี้ประจำเดือนนี้</h3>
-            <p class="text-muted" style="font-size:0.85rem; margin-top:0.35rem;">เมื่อสำนักงานออกบิลค่าเช่าประจำเดือนแล้ว ข้อมูลยอดบิลจะแสดงที่นี่ทันที</p>
+        ${isPaid ? `
+          <div style="background:#ffffff; border:2px solid #10b981; border-radius:16px; padding:1.5rem; margin-bottom:1.25rem; box-shadow:0 10px 30px rgba(16,185,129,0.15);">
+            <div style="text-align:center; border-bottom:2px dashed #cbd5e1; padding-bottom:1rem; margin-bottom:1rem;">
+              <div style="font-size:3rem; color:#10b981; margin-bottom:0.35rem;"><i class="fa-solid fa-circle-check"></i></div>
+              <h2 style="color:#065f46; font-size:1.3rem; font-weight:800;">ใบเสร็จรับเงิน (Official Receipt)</h2>
+              <span class="badge-pill badge-success" style="font-size:0.85rem; margin-top:0.35rem;">🟢 ชำระเงินเรียบร้อยแล้ว</span>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; background:#f8fafc; padding:0.85rem; border-radius:10px; font-size:0.88rem; margin-bottom:1rem;">
+              <div><strong>เลขที่ใบเสร็จ:</strong> ${latestInvoice.invoiceNumber}</div>
+              <div><strong>ห้องพัก:</strong> ห้อง ${latestInvoice.roomName}</div>
+              <div><strong>ผู้ชำระเงิน:</strong> ${latestInvoice.tenantName}</div>
+              <div><strong>วันที่ชำระ:</strong> ${Formatters.thaiDate(latestInvoice.paymentDate || new Date().toISOString())}</div>
+            </div>
+
+            <table style="width:100%; border-collapse:collapse; font-size:0.88rem; margin-bottom:1rem;" border="1" cellpadding="6">
+              <thead>
+                <tr style="background:#f1f5f9; color:#1e293b;">
+                  <th style="text-align:center;">ลำดับ</th>
+                  <th>รายการชำระเงิน</th>
+                  <th style="text-align:right;">จำนวนเงิน (บาท)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td style="text-align:center;">1</td><td>ค่าเช่าห้องพักประจำเดือน (${Formatters.thaiMonthBE(latestInvoice.monthKey)})</td><td style="text-align:right;">${Formatters.currency(latestInvoice.rentAmount || 2500)}</td></tr>
+                <tr><td style="text-align:center;">2</td><td>ค่าไฟฟ้า (${latestInvoice.elecPrev} ➔ ${latestInvoice.elecCurr})</td><td style="text-align:right;">${Formatters.currency(latestInvoice.elecAmount || 0)}</td></tr>
+                <tr><td style="text-align:center;">3</td><td>ค่าน้ำประปา (${latestInvoice.waterPrev} ➔ ${latestInvoice.waterCurr})</td><td style="text-align:right;">${Formatters.currency(latestInvoice.waterAmount || 0)}</td></tr>
+                <tr><td style="text-align:center;">4</td><td>ค่าขยะ / สาธารณูปโภค</td><td style="text-align:right;">${Formatters.currency(latestInvoice.trashFee || 20)}</td></tr>
+                <tr style="background:#f8fafc; font-weight:bold;"><td colspan="2" style="text-align:right;">ยอดรวมชำระทั้งสิ้น:</td><td style="text-align:right; color:#10b981; font-size:1.1rem;">${Formatters.currency(latestInvoice.paidAmount || latestInvoice.totalAmount)}</td></tr>
+              </tbody>
+            </table>
+
+            <button id="btn-view-receipt" class="btn btn-success btn-full" style="padding:0.75rem; font-weight:700; border-radius:10px;">
+              <i class="fa-solid fa-print"></i> พิมพ์ / ดาวน์โหลดใบเสร็จ (PDF)
+            </button>
           </div>
         ` : `
           <div class="bill-card-detail">
@@ -313,8 +370,8 @@ class MyBillsApp {
               <h3 style="font-size:1.05rem; font-weight:700; color:#0f172a;">
                 <i class="fa-solid fa-file-invoice-dollar text-primary"></i> ใบแจ้งหนี้ประจำเดือน ${Formatters.thaiMonthBE(latestInvoice.monthKey)}
               </h3>
-              <span class="badge-pill ${isPaid ? 'badge-success' : 'badge-danger'}" style="font-size:0.85rem; padding:0.35rem 0.75rem;">
-                ${isPaid ? '🟢 ชำระเงินเรียบร้อยแล้ว' : '🔴 ค้างชำระ'}
+              <span class="badge-pill badge-danger" style="font-size:0.85rem; padding:0.35rem 0.75rem;">
+                🔴 ค้างชำระ
               </span>
             </div>
 
@@ -341,43 +398,39 @@ class MyBillsApp {
             </div>
           </div>
 
-          ${isPaid ? `
-            <div style="background:#ecfdf5; border:2px solid #10b981; border-radius:14px; padding:1.25rem; text-align:center; margin-bottom:1.25rem;">
-              <div style="font-size:2.5rem; color:#10b981; margin-bottom:0.35rem;"><i class="fa-solid fa-circle-check"></i></div>
-              <h3 style="color:#065f46; font-size:1.15rem; font-weight:800;">ชำระเงินเรียบร้อยแล้ว</h3>
-              <p style="color:#047857; font-size:0.85rem; margin-top:0.25rem; margin-bottom:1rem;">วันที่ชำระ: ${Formatters.thaiDate(latestInvoice.paymentDate || new Date().toISOString())}</p>
-              <button id="btn-view-receipt" class="btn btn-success btn-full" style="padding:0.75rem; font-weight:700; border-radius:10px;">
-                <i class="fa-solid fa-receipt"></i> เปิดดูใบเสร็จรับเงิน (Official Receipt)
-              </button>
+          <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px; padding:1rem; text-align:center; margin-bottom:1.25rem;">
+            <div style="font-size:0.92rem; color:#334155; line-height:1.6;">
+              <i class="fa-solid fa-building-columns text-primary"></i> <strong>โอนชำระเงินผ่านบัญชีธนาคาร:</strong><br>
+              ธนาคารกรุงศรีอยุธยา (BAY) เลขที่บัญชี: <strong style="font-size:1.15rem; color:#2563eb;">240-1-34666-3</strong><br>
+              ชื่อบัญชี: <strong>นางสมผิว น้ำวน</strong> | ยอดโอนสุทธิ: <strong style="font-size:1.15rem; color:#dc2626;">${Formatters.currency(amountToPay)}</strong>
             </div>
-          ` : `
-            <div class="qr-box">
-              <span class="badge-pill badge-primary" style="font-size:0.85rem; margin-bottom:0.5rem;"><i class="fa-solid fa-qrcode"></i> สแกนชำระเงินผ่าน PromptPay</span>
-              <div><img src="${qrUrl}" alt="PromptPay QR Code"></div>
-              <div style="font-size:0.88rem; color:#475569;">
-                ชื่อบัญชี: <strong>นางสมผิว น้ำวน (ธ.กรุงศรีฯ)</strong><br>
-                เลข PromptPay: <strong>${promptPayId}</strong> | ยอดโอน: <strong class="text-primary">${Formatters.currency(amountToPay)}</strong>
-              </div>
-            </div>
+          </div>
 
-            <form id="slip-upload-form">
-              <div class="form-group">
-                <label style="font-weight:700; color:#334155; display:block; margin-bottom:0.5rem;">
-                  <i class="fa-solid fa-file-arrow-up text-primary"></i> อัปโหลดสลิปหลักฐานการโอนเงิน *
-                </label>
-                
-                <div class="slip-upload-area" id="slip-drop-area">
-                  <i class="fa-solid fa-cloud-arrow-up" style="font-size:2.2rem; color:#2563eb; margin-bottom:0.5rem;"></i>
-                  <div style="font-weight:600; color:#334155;">กดที่นี่เพื่อเลือกไฟล์รูปสลิปเงินโอน</div>
-                  <small class="text-muted">รองรับไฟล์ภาพ JPG, PNG (ไม่เกิน 10MB)</small>
-                  <input type="file" id="input-slip-file" accept="image/*" style="display:none;" required>
-                  <div id="slip-preview-container" style="display:none; margin-top:0.75rem;">
-                    <img id="slip-preview-img" class="slip-preview-img" src="" alt="Preview Slip">
-                  </div>
+          <form id="slip-upload-form">
+            <div class="form-group">
+              <label style="font-weight:700; color:#334155; display:block; margin-bottom:0.5rem;">
+                <i class="fa-solid fa-file-arrow-up text-primary"></i> อัปโหลดสลิปหลักฐานการโอนเงิน *
+              </label>
+              
+              <div class="slip-upload-area" id="slip-drop-area">
+                <i class="fa-solid fa-cloud-arrow-up" style="font-size:2.2rem; color:#2563eb; margin-bottom:0.5rem;"></i>
+                <div style="font-weight:600; color:#334155;">กดที่นี่เพื่อเลือกไฟล์รูปสลิปเงินโอน</div>
+                <small class="text-muted">รองรับไฟล์ภาพ JPG, PNG (ไม่เกิน 10MB)</small>
+                <input type="file" id="input-slip-file" accept="image/*" style="display:none;" required>
+                <div id="slip-preview-container" style="display:none; margin-top:0.75rem;">
+                  <img id="slip-preview-img" class="slip-preview-img" src="" alt="Preview Slip">
                 </div>
               </div>
+            </div>
 
-              <button type="submit" id="btn-submit-pay" class="btn btn-primary btn-full" style="padding:0.85rem; font-size:1.1rem; font-weight:800; border-radius:12px; box-shadow:0 8px 20px rgba(37,99,235,0.35);">
+            <button type="submit" id="btn-submit-pay" class="btn btn-primary btn-full" style="padding:0.85rem; font-size:1.1rem; font-weight:800; border-radius:12px; box-shadow:0 8px 20px rgba(37,99,235,0.35);">
+              <i class="fa-solid fa-paper-plane"></i> ชำระบริการและแนบสลิป
+            </button>
+          </form>
+        `}
+      </div>
+    `;
+  }
                 <i class="fa-solid fa-paper-plane"></i> ชำระบริการและแนบสลิป
               </button>
             </form>

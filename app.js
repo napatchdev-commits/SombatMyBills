@@ -191,6 +191,7 @@ class MyBillsApp {
   // --- 1. LOGIN SCREEN ---
   static renderLoginScreen() {
     const apartmentName = (this.state.settings && this.state.settings.apartmentName) || 'หอพักสมบัติ นนทบุรี';
+    const rooms = this.state.rooms || [];
 
     return `
       <div class="tenant-card animate-fade-in">
@@ -201,16 +202,30 @@ class MyBillsApp {
         </div>
 
         <form id="tenant-login-form">
+          <div class="form-group" style="margin-bottom:1rem;">
+            <label style="font-weight:700; color:#334155; display:block; margin-bottom:0.5rem;">
+              <i class="fa-solid fa-door-closed text-primary"></i> เลือกห้องพักของคุณ *
+            </label>
+            <select id="select-tenant-room" class="form-control" style="padding:0.85rem 1rem; border-radius:10px; font-size:1.05rem;" required>
+              <option value="">-- เลือกห้องพักของคุณ --</option>
+              ${rooms.map(r => `
+                <option value="${r.id}">
+                  ห้อง ${r.name} (${r.currentTenantName && r.currentTenantName !== 'ไม่มีผู้เข้าเช่า' ? r.currentTenantName : 'ห้องเช่า'})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
           <div class="form-group" style="margin-bottom:1.5rem;">
             <label style="font-weight:700; color:#334155; display:block; margin-bottom:0.5rem;">
               <i class="fa-solid fa-id-card text-primary"></i> เลขบัตรประชาชน (13 หลัก) *
             </label>
             <input type="text" id="input-idcard" class="form-control" placeholder="ระบุเลขบัตรประชาชน 13 หลัก..." maxlength="17" required style="padding:0.85rem 1rem; border-radius:10px; font-size:1.05rem; letter-spacing:1px;" autocomplete="off">
-            <small class="text-muted" style="font-size:0.8rem; margin-top:0.35rem; display:block;">💡 กรอกเลขบัตรประชาชนเพื่อเข้าสู่ระบบดูบิลและชำระเงิน</small>
+            <small class="text-muted" style="font-size:0.8rem; margin-top:0.35rem; display:block;">💡 กรอกเลขบัตรประชาชนและเลือกห้องพักเพื่อดูใบแจ้งหนี้/PDF</small>
           </div>
 
           <button type="submit" class="btn btn-primary btn-full" style="padding:0.85rem; font-size:1.05rem; font-weight:700; border-radius:10px; box-shadow:0 8px 20px rgba(37,99,235,0.3);">
-            <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบดูบิลห้องพัก
+            <i class="fa-solid fa-file-pdf"></i> เข้าสู่ระบบเปิดดูบิล PDF ห้องพัก
           </button>
         </form>
 
@@ -227,8 +242,14 @@ class MyBillsApp {
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const selectedRoomId = document.getElementById('select-tenant-room').value;
       const rawInput = document.getElementById('input-idcard').value.trim();
       const cleanInput = rawInput.replace(/\D/g, '');
+
+      if (!selectedRoomId) {
+        alert('กรุณาเลือกห้องพักของคุณ');
+        return;
+      }
 
       if (cleanInput.length !== 13) {
         alert('กรุณากรอกเลขบัตรประชาชนให้ครบ 13 หลัก');
@@ -241,43 +262,23 @@ class MyBillsApp {
 
       const tenants = this.state.tenants || [];
       const rooms = this.state.rooms || [];
-      let matched = tenants.find(t => String(t.idCard || '').replace(/\D/g, '') === cleanInput);
+      const matchedRoom = rooms.find(r => r.id === selectedRoomId) || rooms[0] || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
+      
+      const realTenantName = (matchedRoom && matchedRoom.currentTenantName && matchedRoom.currentTenantName !== 'ไม่มีผู้เข้าเช่า')
+        ? matchedRoom.currentTenantName
+        : ('ผู้เช่าห้อง ' + (matchedRoom ? matchedRoom.name : 'S101'));
 
-      // Auto-pair tenant with distinct room by 13-digit National ID
-      if (!matched && cleanInput.length === 13) {
-        let matchedRoom = rooms.find(r => String(r.idCard || r.currentTenantIdCard || '').replace(/\D/g, '') === cleanInput);
-        if (!matchedRoom) {
-          const occupiedRooms = rooms.filter(r => r.occupied || r.status === 'occupied' || r.currentTenantName);
-          const pool = occupiedRooms.length > 0 ? occupiedRooms : (rooms.length > 0 ? rooms : [{ id: 's101', name: 'S101', floor: 1, baseRent: 2500 }]);
-          // Compute unique hash index from 13-digit National ID
-          const sumDigits = cleanInput.split('').reduce((acc, d) => acc + (parseInt(d, 10) || 0), 0);
-          matchedRoom = pool[sumDigits % pool.length];
-        }
+      const matched = {
+        id: 't_user_' + cleanInput + '_' + selectedRoomId,
+        name: realTenantName,
+        idCard: Formatters.formatIdCard(cleanInput),
+        tel: '080-5991691',
+        assignedRoomId: selectedRoomId
+      };
 
-        const realTenantName = (matchedRoom && matchedRoom.currentTenantName && matchedRoom.currentTenantName !== 'ไม่มีผู้เข้าเช่า')
-          ? matchedRoom.currentTenantName
-          : ('ผู้เช่าห้อง ' + (matchedRoom ? matchedRoom.name : 'S101'));
-        
-        matched = {
-          id: 't_user_' + cleanInput,
-          name: realTenantName,
-          idCard: Formatters.formatIdCard(cleanInput),
-          tel: '080-5991691',
-          assignedRoomId: matchedRoom ? matchedRoom.id : 's101'
-        };
-
-        if (!this.state.tenants) this.state.tenants = [];
-        this.state.tenants.push(matched);
-        TenantDBService.saveState(this.state);
-      }
-
-      if (matched) {
-        this.currentTenant = matched;
-        TenantDBService.setLoggedInTenant(matched);
-        this.render();
-      } else {
-        alert('⚠️ ไม่พบข้อมูลผู้เช่าที่ตรงกับเลขบัตรประชาชนนี้ในระบบ');
-      }
+      this.currentTenant = matched;
+      TenantDBService.setLoggedInTenant(matched);
+      this.render();
     });
   }
 

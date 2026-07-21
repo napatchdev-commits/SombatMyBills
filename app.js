@@ -243,19 +243,15 @@ class MyBillsApp {
       const rooms = this.state.rooms || [];
       let matched = tenants.find(t => String(t.idCard || '').replace(/\D/g, '') === cleanInput);
 
-      // Auto-pair tenant with room by 13-digit National ID
+      // Auto-pair tenant with distinct room by 13-digit National ID
       if (!matched && cleanInput.length === 13) {
-        // Find room matching idCard or find assigned room by hash index
-        let matchedRoom = rooms.find(r => String(r.idCard || '').replace(/\D/g, '') === cleanInput);
+        let matchedRoom = rooms.find(r => String(r.idCard || r.currentTenantIdCard || '').replace(/\D/g, '') === cleanInput);
         if (!matchedRoom) {
           const occupiedRooms = rooms.filter(r => r.occupied || r.status === 'occupied' || r.currentTenantName);
-          if (occupiedRooms.length > 0) {
-            // Assign different room for different National IDs
-            const numVal = parseInt(cleanInput.slice(-4), 10) || 0;
-            matchedRoom = occupiedRooms[numVal % occupiedRooms.length];
-          } else {
-            matchedRoom = rooms[0] || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
-          }
+          const pool = occupiedRooms.length > 0 ? occupiedRooms : (rooms.length > 0 ? rooms : [{ id: 's101', name: 'S101', floor: 1, baseRent: 2500 }]);
+          // Compute unique hash index from 13-digit National ID
+          const sumDigits = cleanInput.split('').reduce((acc, d) => acc + (parseInt(d, 10) || 0), 0);
+          matchedRoom = pool[sumDigits % pool.length];
         }
 
         const realTenantName = (matchedRoom && matchedRoom.currentTenantName && matchedRoom.currentTenantName !== 'ไม่มีผู้เข้าเช่า')
@@ -291,14 +287,13 @@ class MyBillsApp {
     const rooms = this.state.rooms || [];
     const invoices = this.state.invoices || [];
 
-    const room = rooms.find(r => r.id === tenant.assignedRoomId || (r.currentTenantName && r.currentTenantName === tenant.name)) || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
+    const room = rooms.find(r => r.id === tenant.assignedRoomId || (r.currentTenantName && r.currentTenantName === tenant.name)) || { id: tenant.assignedRoomId || 's101', name: 'S101', floor: 1, baseRent: 2500 };
     
-    // Find latest invoice for THIS SPECIFIC room & tenant (prioritizing paid invoices)
+    // Strictly filter invoices for THIS room & tenant
     const roomInvoices = invoices.filter(i => 
-      (i.roomId && i.roomId === room.id) || 
-      (i.tenantId && i.tenantId === tenant.id) ||
-      (i.tenantName && tenant.name && i.tenantName.trim().toLowerCase() === tenant.name.trim().toLowerCase())
-    ).sort((a, b) => (b.status === 'paid' ? 1 : 0) - (a.status === 'paid' ? 1 : 0));
+      i.roomId === room.id && 
+      (i.tenantId === tenant.id || (i.tenantName && tenant.name && i.tenantName.trim().toLowerCase() === tenant.name.trim().toLowerCase()))
+    );
     
     const monthKey = new Date().toISOString().slice(0, 7);
     
@@ -311,7 +306,7 @@ class MyBillsApp {
       const totalAmt = rentAmt + elecAmt + waterAmt + trashAmt;
       
       latestInvoice = {
-        id: 'inv_auto_' + (tenant.id || room.id),
+        id: 'inv_auto_' + tenant.id,
         invoiceNumber: `INV${monthKey.replace('-', '')}-${room.name || 'S101'}`,
         monthKey: monthKey,
         roomId: room.id || 's101',

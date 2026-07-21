@@ -240,19 +240,34 @@ class MyBillsApp {
       if (cloudData) this.state = cloudData;
 
       const tenants = this.state.tenants || [];
+      const rooms = this.state.rooms || [];
       let matched = tenants.find(t => String(t.idCard || '').replace(/\D/g, '') === cleanInput);
 
-      // Auto-pair tenant with room if new device / unassigned tenant ID
+      // Auto-pair tenant with room by 13-digit National ID
       if (!matched && cleanInput.length === 13) {
-        const rooms = this.state.rooms || [];
-        const room = rooms.find(r => r.occupied || r.status === 'occupied' || r.currentTenantName) || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
+        // Find room matching idCard or find assigned room by hash index
+        let matchedRoom = rooms.find(r => String(r.idCard || '').replace(/\D/g, '') === cleanInput);
+        if (!matchedRoom) {
+          const occupiedRooms = rooms.filter(r => r.occupied || r.status === 'occupied' || r.currentTenantName);
+          if (occupiedRooms.length > 0) {
+            // Assign different room for different National IDs
+            const numVal = parseInt(cleanInput.slice(-4), 10) || 0;
+            matchedRoom = occupiedRooms[numVal % occupiedRooms.length];
+          } else {
+            matchedRoom = rooms[0] || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
+          }
+        }
+
+        const realTenantName = (matchedRoom && matchedRoom.currentTenantName && matchedRoom.currentTenantName !== 'ไม่มีผู้เข้าเช่า')
+          ? matchedRoom.currentTenantName
+          : ('ผู้เช่าห้อง ' + (matchedRoom ? matchedRoom.name : 'S101'));
         
         matched = {
           id: 't_user_' + cleanInput,
-          name: room.currentTenantName && room.currentTenantName !== 'ไม่มีผู้เข้าเช่า' ? room.currentTenantName : 'ผู้เช่าห้อง ' + (room.name || 'S101'),
+          name: realTenantName,
           idCard: Formatters.formatIdCard(cleanInput),
           tel: '080-5991691',
-          assignedRoomId: room.id || 's101'
+          assignedRoomId: matchedRoom ? matchedRoom.id : 's101'
         };
 
         if (!this.state.tenants) this.state.tenants = [];
@@ -276,10 +291,15 @@ class MyBillsApp {
     const rooms = this.state.rooms || [];
     const invoices = this.state.invoices || [];
 
-    const room = rooms.find(r => r.id === tenant.assignedRoomId || r.currentTenantName === tenant.name) || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
+    const room = rooms.find(r => r.id === tenant.assignedRoomId || (r.currentTenantName && r.currentTenantName === tenant.name)) || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
     
-    // Find latest invoice for this room / tenant or generate default bill form
-    const roomInvoices = invoices.filter(i => i.roomId === room.id || i.tenantName === tenant.name || i.tenantId === tenant.id);
+    // Find latest invoice for THIS SPECIFIC room & tenant
+    const roomInvoices = invoices.filter(i => 
+      (i.roomId && i.roomId === room.id) || 
+      (i.tenantId && i.tenantId === tenant.id) ||
+      (i.tenantName && tenant.name && i.tenantName.trim().toLowerCase() === tenant.name.trim().toLowerCase())
+    );
+    
     const monthKey = new Date().toISOString().slice(0, 7);
     
     let latestInvoice = roomInvoices.length > 0 ? roomInvoices[roomInvoices.length - 1] : null;
@@ -291,7 +311,7 @@ class MyBillsApp {
       const totalAmt = rentAmt + elecAmt + waterAmt + trashAmt;
       
       latestInvoice = {
-        id: 'inv_auto_' + (room.id || 's101'),
+        id: 'inv_auto_' + (tenant.id || room.id),
         invoiceNumber: `INV${monthKey.replace('-', '')}-${room.name || 'S101'}`,
         monthKey: monthKey,
         roomId: room.id || 's101',
@@ -308,9 +328,6 @@ class MyBillsApp {
         outstandingAmount: totalAmt,
         status: 'unpaid'
       };
-      
-      if (!this.state.invoices) this.state.invoices = [];
-      this.state.invoices.push(latestInvoice);
     }
 
     const isPaid = latestInvoice.status === 'paid';

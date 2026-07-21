@@ -10,10 +10,16 @@ class Formatters {
 
   static thaiDate(dateStr) {
     if (!dateStr) return '-';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
-    const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear() + 543}`;
+    if (String(dateStr).includes('-')) {
+      const parts = String(dateStr).split('T')[0].split('-');
+      if (parts.length === 3) {
+        const yearBE = parseInt(parts[0], 10) + 543;
+        const day = parts[2].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        return `${day}/${month}/${yearBE}`;
+      }
+    }
+    return dateStr;
   }
 
   static thaiMonthBE(monthKey) {

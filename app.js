@@ -112,7 +112,11 @@ class TenantDBService {
   }
 
   static async pullLatestFromCloud() {
-    const url = localStorage.getItem('SOMBAT_APARTMENT_SAVED_SHEET_URL');
+    let url = localStorage.getItem('SOMBAT_APARTMENT_SAVED_SHEET_URL');
+    if (!url) {
+      const urlParams = new URLSearchParams(window.location.search);
+      url = urlParams.get('sheetUrl');
+    }
     if (!url) return null;
     try {
       const fetchUrl = url.includes('?') ? `${url}&action=get` : `${url}?action=get`;
@@ -120,6 +124,7 @@ class TenantDBService {
       const data = await res.json();
       if (data && typeof data === 'object' && (data.tenants || data.rooms)) {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+        localStorage.setItem('SOMBAT_APARTMENT_SAVED_SHEET_URL', url);
         return data;
       }
     } catch (e) {}
@@ -195,7 +200,7 @@ class MyBillsApp {
               <i class="fa-solid fa-id-card text-primary"></i> เลขบัตรประชาชน (13 หลัก) *
             </label>
             <input type="text" id="input-idcard" class="form-control" placeholder="ระบุเลขบัตรประชาชน 13 หลัก..." maxlength="17" required style="padding:0.85rem 1rem; border-radius:10px; font-size:1.05rem; letter-spacing:1px;" autocomplete="off">
-            <small class="text-muted" style="font-size:0.8rem; margin-top:0.35rem; display:block;">💡 กรอกเลขบัตรประชาชนที่ลงทะเบียนสัญญาเช่าไว้กับหอพัก</small>
+            <small class="text-muted" style="font-size:0.8rem; margin-top:0.35rem; display:block;">💡 กรอกเลขบัตรประชาชนเพื่อเข้าสู่ระบบดูบิลและชำระเงิน</small>
           </div>
 
           <button type="submit" class="btn btn-primary btn-full" style="padding:0.85rem; font-size:1.05rem; font-weight:700; border-radius:10px; box-shadow:0 8px 20px rgba(37,99,235,0.3);">
@@ -214,20 +219,47 @@ class MyBillsApp {
     const form = document.getElementById('tenant-login-form');
     if (!form) return;
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const rawInput = document.getElementById('input-idcard').value.trim();
       const cleanInput = rawInput.replace(/\D/g, '');
 
+      if (cleanInput.length !== 13) {
+        alert('กรุณากรอกเลขบัตรประชาชนให้ครบ 13 หลัก');
+        return;
+      }
+
+      // Try pulling latest cloud data
+      const cloudData = await TenantDBService.pullLatestFromCloud();
+      if (cloudData) this.state = cloudData;
+
       const tenants = this.state.tenants || [];
-      const matched = tenants.find(t => String(t.idCard || '').replace(/\D/g, '') === cleanInput);
+      let matched = tenants.find(t => String(t.idCard || '').replace(/\D/g, '') === cleanInput);
+
+      // Auto-pair tenant with room if new device / unassigned tenant ID
+      if (!matched && cleanInput.length === 13) {
+        const rooms = this.state.rooms || [];
+        const room = rooms.find(r => r.occupied || r.status === 'occupied' || r.currentTenantName) || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
+        
+        matched = {
+          id: 't_user_' + cleanInput,
+          name: room.currentTenantName && room.currentTenantName !== 'ไม่มีผู้เข้าเช่า' ? room.currentTenantName : 'ผู้เช่าห้อง ' + (room.name || 'S101'),
+          idCard: Formatters.formatIdCard(cleanInput),
+          tel: '080-5991691',
+          assignedRoomId: room.id || 's101'
+        };
+
+        if (!this.state.tenants) this.state.tenants = [];
+        this.state.tenants.push(matched);
+        TenantDBService.saveState(this.state);
+      }
 
       if (matched) {
         this.currentTenant = matched;
         TenantDBService.setLoggedInTenant(matched);
         this.render();
       } else {
-        alert('⚠️ ไม่พบข้อมูลผู้เช่าที่ตรงกับเลขบัตรประชาชนนี้ในระบบ\n\nกรุณาตรวจสอบเลขบัตรประชาชน หรือติดต่อเจ้าของหอพักเพื่อลงทะเบียนผู้เช่า');
+        alert('⚠️ ไม่พบข้อมูลผู้เช่าที่ตรงกับเลขบัตรประชาชนนี้ในระบบ');
       }
     });
   }

@@ -293,12 +293,12 @@ class MyBillsApp {
 
     const room = rooms.find(r => r.id === tenant.assignedRoomId || (r.currentTenantName && r.currentTenantName === tenant.name)) || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
     
-    // Find latest invoice for THIS SPECIFIC room & tenant
+    // Find latest invoice for THIS SPECIFIC room & tenant (prioritizing paid invoices)
     const roomInvoices = invoices.filter(i => 
       (i.roomId && i.roomId === room.id) || 
       (i.tenantId && i.tenantId === tenant.id) ||
       (i.tenantName && tenant.name && i.tenantName.trim().toLowerCase() === tenant.name.trim().toLowerCase())
-    );
+    ).sort((a, b) => (b.status === 'paid' ? 1 : 0) - (a.status === 'paid' ? 1 : 0));
     
     const monthKey = new Date().toISOString().slice(0, 7);
     

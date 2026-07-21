@@ -450,6 +450,10 @@ class MyBillsApp {
             </div>
           </div>
 
+          <button id="btn-view-official-bill" class="btn btn-secondary btn-full" style="margin-bottom:1.25rem; padding:0.75rem; border-radius:10px; font-weight:700; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a;">
+            <i class="fa-solid fa-file-pdf text-danger" style="font-size:1.2rem;"></i> เปิดดูฟอร์มใบแจ้งหนี้ฉบับเต็ม (PDF Printable Bill)
+          </button>
+
           <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px; padding:1rem; text-align:center; margin-bottom:1.25rem;">
             <div style="font-size:0.92rem; color:#334155; line-height:1.6;">
               <i class="fa-solid fa-building-columns text-primary"></i> <strong>โอนชำระเงินผ่านบัญชีธนาคาร:</strong><br>
@@ -498,6 +502,13 @@ class MyBillsApp {
     if (viewReceiptBtn) {
       viewReceiptBtn.addEventListener('click', () => {
         this.openReceiptModal();
+      });
+    }
+
+    const viewOfficialBillBtn = document.getElementById('btn-view-official-bill');
+    if (viewOfficialBillBtn) {
+      viewOfficialBillBtn.addEventListener('click', () => {
+        this.openOfficialBillModal();
       });
     }
 
@@ -574,7 +585,142 @@ class MyBillsApp {
     console.log(`📢 [LINE Notify Auto Alert] ห้อง ${invoice.roomName} ผู้เช่า ${invoice.tenantName} ชำระเงินจำนวน ${Formatters.currency(invoice.totalAmount)} เรียบร้อยแล้ว!`);
   }
 
-  // --- 3. OFFICIAL RECEIPT POPUP MODAL ---
+  // --- 3. OFFICIAL BILL POPUP MODAL ---
+  static openOfficialBillModal(invParam = null) {
+    const tenant = this.currentTenant;
+    const rooms = this.state.rooms || [];
+    const invoices = this.state.invoices || [];
+    const room = rooms.find(r => r.id === tenant.assignedRoomId || r.currentTenantName === tenant.name) || { name: tenant.assignedRoomId || 'S101' };
+    
+    const inv = invParam || invoices.find(i => i.roomId === room.id || i.roomName === room.name || i.tenantName === tenant.name) || {
+      invoiceNumber: 'INV' + new Date().toISOString().slice(0, 7).replace('-', '') + '-' + (room.name || 'S101'),
+      monthKey: new Date().toISOString().slice(0, 7), roomName: room.name || 'S101', tenantName: tenant ? tenant.name : 'ผู้เช่า',
+      issueDate: new Date().toISOString().slice(0, 10), dueDate: new Date().toISOString().slice(0, 7) + '-05',
+      rentAmount: room.baseRent || 2500, elecPrev: room.lastElecMeter || 1000, elecCurr: (room.lastElecMeter || 1000) + 65, elecAmount: 520,
+      waterPrev: room.lastWaterMeter || 100, waterCurr: (room.lastWaterMeter || 100) + 10, waterAmount: 200, trashFee: 20, totalAmount: 3240
+    };
+
+    const modal = document.getElementById('app-modal');
+    const dialog = modal.querySelector('.modal-dialog');
+
+    const elecUnits = Math.max(0, (inv.elecCurr || 0) - (inv.elecPrev || 0));
+    const waterUnits = Math.max(0, (inv.waterCurr || 0) - (inv.waterPrev || 0));
+
+    dialog.innerHTML = `
+      <div class="modal-header" style="background:#2563eb; color:#ffffff;">
+        <h3><i class="fa-solid fa-file-pdf"></i> ใบแจ้งหนี้ / ใบเสร็จรับเงิน (Official Bill)</h3>
+        <button class="close-modal-btn" style="color:#ffffff;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:1.5rem;">
+        <div id="printable-bill-area" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:1.75rem; font-family:sans-serif; color:#0f172a;">
+          
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #2563eb; padding-bottom:1rem; margin-bottom:1.25rem;">
+            <div>
+              <h2 style="color:#1e40af; font-size:1.4rem; font-weight:800; margin-bottom:0.25rem;">หอพักสมบัติ นนทบุรี</h2>
+              <p style="font-size:0.82rem; color:#475569; margin:0;">45/10 หมู่ที่ 8 ต.ราษฎร์นิยม อ.ไทรน้อย จ.นนทบุรี 11150</p>
+              <p style="font-size:0.82rem; color:#475569; margin:0;">โทร. 080-5991691, 062-6252564</p>
+            </div>
+            <div style="text-align:right;">
+              <span class="badge-pill ${inv.status === 'paid' ? 'badge-success' : 'badge-danger'}" style="font-size:0.85rem;">
+                ${inv.status === 'paid' ? '🟢 ชำระแล้ว' : '🔴 ค้างชำระ'}
+              </span>
+              <h3 style="font-size:1.1rem; font-weight:800; color:#0f172a; margin-top:0.35rem;">${inv.invoiceNumber}</h3>
+              <p style="font-size:0.82rem; color:#64748b;">ประจำเดือน: ${Formatters.thaiMonthBE(inv.monthKey)}</p>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; background:#f8fafc; padding:1rem; border-radius:10px; margin-bottom:1.25rem; font-size:0.9rem;">
+            <div>
+              <div>ห้องพัก (Room): <strong style="color:#2563eb;">ห้อง ${inv.roomName}</strong></div>
+              <div>วันที่ออกบิล (Issue Date): <strong>${Formatters.thaiDate(inv.issueDate)}</strong></div>
+            </div>
+            <div>
+              <div>ชื่อผู้เช่า (Tenant): <strong>${inv.tenantName}</strong></div>
+              <div>กำหนดชำระเงิน (Due Date): <strong style="color:#dc2626;">${Formatters.thaiDate(inv.dueDate)}</strong></div>
+            </div>
+          </div>
+
+          <table style="width:100%; border-collapse:collapse; font-size:0.88rem; margin-bottom:1.25rem;" border="1" cellpadding="8" cellspacing="0">
+            <thead>
+              <tr style="background:#f1f5f9; color:#0f172a; text-align:center;">
+                <th style="width:8%;">ลำดับ</th>
+                <th>รายการชำระ (Description)</th>
+                <th style="width:12%;">เลขครั้งก่อน</th>
+                <th style="width:12%;">เลขครั้งนี้</th>
+                <th style="width:14%;">หน่วยที่ใช้</th>
+                <th style="width:14%;">ราคา/หน่วย</th>
+                <th style="width:18%;">จำนวนเงิน (บาท)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="text-align:center;">1</td>
+                <td>ค่าเช่าห้องพักประจำเดือน (${Formatters.thaiMonthBE(inv.monthKey)})</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:right;"><strong>${Formatters.currency(inv.rentAmount)}</strong></td>
+              </tr>
+              <tr>
+                <td style="text-align:center;">2</td>
+                <td>ค่าไฟฟ้า (Electricity)</td>
+                <td style="text-align:center;">${inv.elecPrev}</td>
+                <td style="text-align:center;">${inv.elecCurr}</td>
+                <td style="text-align:center;">${elecUnits} ยูนิต</td>
+                <td style="text-align:center;">฿8.00</td>
+                <td style="text-align:right;"><strong>${Formatters.currency(inv.elecAmount)}</strong></td>
+              </tr>
+              <tr>
+                <td style="text-align:center;">3</td>
+                <td>ค่าน้ำประปา (Water)</td>
+                <td style="text-align:center;">${inv.waterPrev}</td>
+                <td style="text-align:center;">${inv.waterCurr}</td>
+                <td style="text-align:center;">${waterUnits} ยูนิต</td>
+                <td style="text-align:center;">฿20.00</td>
+                <td style="text-align:right;"><strong>${Formatters.currency(inv.waterAmount)}</strong></td>
+              </tr>
+              <tr>
+                <td style="text-align:center;">4</td>
+                <td>ค่าบริการสาธารณูปโภค / ขยะ (Trash Fee)</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:center;">-</td>
+                <td style="text-align:right;"><strong>${Formatters.currency(inv.trashFee || 20)}</strong></td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr style="background:#eff6ff; font-weight:800; color:#1e40af;">
+                <td colspan="6" style="text-align:right; font-size:1.05rem;">ยอดเงินรวมสุทธิที่ต้องชำระ (Total Net Amount):</td>
+                <td style="text-align:right; font-size:1.25rem; color:#1d4ed8;">${Formatters.currency(inv.totalAmount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <div style="background:#fffbebf8; border:1px solid #fde68a; border-radius:8px; padding:0.85rem; font-size:0.85rem; color:#92400e; text-align:center; margin-bottom:1rem;">
+            📌 <strong>ช่องทางชำระเงิน:</strong> โอนชำระเงิน ธ.กรุงศรีอยุธยา (BAY) เลขที่ <strong>240-1-34666-3</strong> ชื่อบัญชี: <strong>นางสมผิว น้ำวน</strong>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:0.75rem; margin-top:1.25rem;">
+          <button id="btn-print-official-bill" class="btn btn-primary btn-full" style="padding:0.85rem; font-weight:700; border-radius:10px;">
+            <i class="fa-solid fa-print"></i> พิมพ์เอกสาร / สั่งพิมพ์ PDF
+          </button>
+        </div>
+      </div>
+    `;
+
+    modal.classList.add('active');
+    modal.querySelector('.close-modal-btn').addEventListener('click', () => modal.classList.remove('active'));
+
+    const printBtn = document.getElementById('btn-print-official-bill');
+    if (printBtn) {
+      printBtn.addEventListener('click', () => window.print());
+    }
+  }
+
+  // --- 4. OFFICIAL RECEIPT POPUP MODAL ---
   static openReceiptModal(invParam = null) {
     const tenant = this.currentTenant;
     const rooms = this.state.rooms || [];

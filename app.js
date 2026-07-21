@@ -431,14 +431,6 @@ class MyBillsApp {
       </div>
     `;
   }
-                <i class="fa-solid fa-paper-plane"></i> ชำระบริการและแนบสลิป
-              </button>
-            </form>
-          `}
-        `}
-      </div>
-    `;
-  }
 
   static bindDashboardEvents() {
     const logoutBtn = document.getElementById('btn-tenant-logout');

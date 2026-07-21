@@ -87,8 +87,26 @@ class PromptPayService {
 }
 
 class TenantDBService {
-  static STORAGE_KEY = 'SOMBAT_APARTMENT_DB_STATE_V3';
-  static TENANT_SESSION_KEY = 'MYBILLS_CURRENT_TENANT';
+  static getInitialRooms() {
+    const rooms = [];
+    // S101 - S119
+    for (let i = 101; i <= 119; i++) {
+      rooms.push({ id: `s${i}`, name: `S${i}`, floor: 1, baseRent: 2500, currentTenantName: i % 2 === 0 ? `ผู้เช่าห้อง S${i}` : 'มีผู้เช่า' });
+    }
+    // Rooms 101 - 110 (Floor 1), 201 - 210 (Floor 2)
+    for (let f = 1; f <= 2; f++) {
+      for (let r = 1; r <= 10; r++) {
+        const num = `${f}0${r}`.slice(-3);
+        rooms.push({ id: `rm_${f}${r}`, name: `${num}`, floor: f, baseRent: f === 1 ? 2500 : 3500, currentTenantName: `ผู้เช่าห้อง ${num}` });
+      }
+    }
+    // Named houses
+    rooms.push(
+      { id: 'rm_house1', name: 'บ้านหลัง 1', floor: 1, baseRent: 5500, currentTenantName: 'เพชรน้ำหนึ่ง' },
+      { id: 'rm_house2', name: 'บ้านหลัง 2', floor: 1, baseRent: 5500, currentTenantName: 'แสงเงินแสงทอง' }
+    );
+    return rooms;
+  }
 
   static getState() {
     const raw = localStorage.getItem(this.STORAGE_KEY);
@@ -99,8 +117,11 @@ class TenantDBService {
     if (!state) {
       state = {
         settings: { apartmentName: 'หอพักสมบัติ นนทบุรี', promptPayId: '0805991691' },
-        rooms: [], tenants: [], invoices: [], roomTypes: []
+        rooms: this.getInitialRooms(), tenants: [], invoices: [], roomTypes: []
       };
+    }
+    if (!state.rooms || !Array.isArray(state.rooms) || state.rooms.length === 0) {
+      state.rooms = this.getInitialRooms();
     }
     return state;
   }

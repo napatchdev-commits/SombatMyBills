@@ -165,18 +165,18 @@ class TenantDBService {
   }
 
   static getLoggedInTenant() {
-    const raw = sessionStorage.getItem(this.TENANT_SESSION_KEY) || localStorage.getItem(this.TENANT_SESSION_KEY);
+    localStorage.removeItem(this.TENANT_SESSION_KEY);
+    const raw = sessionStorage.getItem(this.TENANT_SESSION_KEY);
     if (!raw) return null;
     try { return JSON.parse(raw); } catch (e) { return null; }
   }
 
   static setLoggedInTenant(tenant) {
+    localStorage.removeItem(this.TENANT_SESSION_KEY);
     if (tenant) {
       sessionStorage.setItem(this.TENANT_SESSION_KEY, JSON.stringify(tenant));
-      localStorage.setItem(this.TENANT_SESSION_KEY, JSON.stringify(tenant));
     } else {
       sessionStorage.removeItem(this.TENANT_SESSION_KEY);
-      localStorage.removeItem(this.TENANT_SESSION_KEY);
     }
   }
 }

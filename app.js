@@ -149,10 +149,16 @@ class TenantDBService {
       const fetchUrl = url.includes('?') ? `${url}&action=get` : `${url}?action=get`;
       const res = await fetch(fetchUrl);
       const data = await res.json();
-      if (data && typeof data === 'object' && (data.tenants || data.rooms)) {
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      
+      let payload = data;
+      if (data && data.status === 'success' && data.data) {
+        payload = data.data;
+      }
+      
+      if (payload && typeof payload === 'object' && (payload.tenants || payload.rooms)) {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(payload));
         localStorage.setItem('SOMBAT_APARTMENT_SAVED_SHEET_URL', url);
-        return data;
+        return payload;
       }
     } catch (e) {}
     return null;
@@ -283,18 +289,27 @@ class MyBillsApp {
 
       const tenants = this.state.tenants || [];
       const rooms = this.state.rooms || [];
-      const matchedRoom = rooms.find(r => r.id === selectedRoomId) || rooms[0] || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
       
-      const realTenantName = (matchedRoom && matchedRoom.currentTenantName && matchedRoom.currentTenantName !== 'ไม่มีผู้เข้าเช่า')
-        ? matchedRoom.currentTenantName
-        : ('ผู้เช่าห้อง ' + (matchedRoom ? matchedRoom.name : 'S101'));
+      const tenantMatch = tenants.find(t => String(t.idCard || '').replace(/\D/g, '') === cleanInput);
+      let finalRoomId = selectedRoomId;
+      let finalTenantName = '';
+
+      if (tenantMatch) {
+        finalRoomId = tenantMatch.assignedRoomId || selectedRoomId;
+        finalTenantName = tenantMatch.name;
+      } else {
+        const matchedRoom = rooms.find(r => r.id === selectedRoomId) || rooms[0] || { id: 's101', name: 'S101', floor: 1, baseRent: 2500 };
+        finalTenantName = (matchedRoom && matchedRoom.currentTenantName && matchedRoom.currentTenantName !== 'ไม่มีผู้เข้าเช่า')
+          ? matchedRoom.currentTenantName
+          : ('ผู้เช่าห้อง ' + (matchedRoom ? matchedRoom.name : 'S101'));
+      }
 
       const matched = {
-        id: 't_user_' + cleanInput + '_' + selectedRoomId,
-        name: realTenantName,
+        id: 't_user_' + cleanInput + '_' + finalRoomId,
+        name: finalTenantName,
         idCard: Formatters.formatIdCard(cleanInput),
         tel: '080-5991691',
-        assignedRoomId: selectedRoomId
+        assignedRoomId: finalRoomId
       };
 
       this.currentTenant = matched;
@@ -312,14 +327,46 @@ class MyBillsApp {
 
     const room = rooms.find(r => r.id === tenant.assignedRoomId || (r.name && tenant.assignedRoomId && r.name.toLowerCase() === tenant.assignedRoomId.toLowerCase())) || { id: tenant.assignedRoomId || 's101', name: 'S101', floor: 1, baseRent: 2500 };
     
-    // Find invoice for THIS room (by roomId or roomName)
-    const roomInvoices = invoices.filter(i => 
-      (i.roomId && (i.roomId === room.id || i.roomId.toLowerCase() === room.id.toLowerCase())) ||
-      (i.roomName && room.name && i.roomName.trim().toLowerCase() === room.name.trim().toLowerCase())
-    );
+    // 1. Filter invoices matching this tenant's 13-digit National ID (clean format)
+    const cleanTenantIdCard = String(tenant.idCard || '').replace(/\D/g, '');
+    let matchedInvoices = [];
+    
+    if (cleanTenantIdCard && cleanTenantIdCard.length === 13) {
+      matchedInvoices = invoices.filter(i => {
+        const cleanInvIdCard = String(i.idCard || '').replace(/\D/g, '');
+        return cleanInvIdCard === cleanTenantIdCard;
+      });
+    }
+
+    // 2. If no invoice matches by National ID, fallback to room ID / room Name
+    if (matchedInvoices.length === 0) {
+      matchedInvoices = invoices.filter(i => 
+        (i.roomId && (i.roomId === room.id || i.roomId.toLowerCase() === room.id.toLowerCase())) ||
+        (i.roomName && room.name && i.roomName.trim().toLowerCase() === room.name.trim().toLowerCase())
+      );
+    }
+
+    // 3. Deduplicate invoices by monthKey, prioritizing paid status
+    const deduplicatedMap = new Map();
+    const sortedForDeduplication = [...matchedInvoices].sort((a, b) => {
+      if (a.status === 'paid' && b.status !== 'paid') return -1;
+      if (a.status !== 'paid' && b.status === 'paid') return 1;
+      return 0;
+    });
+
+    for (const inv of sortedForDeduplication) {
+      if (!deduplicatedMap.has(inv.monthKey)) {
+        deduplicatedMap.set(inv.monthKey, inv);
+      }
+    }
+
+    // 4. Sort by monthKey descending (latest month first)
+    const sortedInvoices = Array.from(deduplicatedMap.values()).sort((a, b) => {
+      return (b.monthKey || '').localeCompare(a.monthKey || '');
+    });
     
     const monthKey = new Date().toISOString().slice(0, 7);
-    let latestInvoice = roomInvoices.length > 0 ? roomInvoices[roomInvoices.length - 1] : null;
+    let latestInvoice = sortedInvoices.length > 0 ? sortedInvoices[0] : null;
 
     // Resolve tenant real name
     let realTenantName = '';
@@ -363,6 +410,9 @@ class MyBillsApp {
     } else {
       latestInvoice.tenantName = realTenantName;
     }
+
+    // Keep track of the active invoice number
+    MyBillsApp.activeInvoiceNumber = latestInvoice.invoiceNumber;
 
     tenant.name = realTenantName;
     const isPaid = latestInvoice.status === 'paid';
@@ -548,7 +598,7 @@ class MyBillsApp {
         const room = rooms.find(r => r.id === tenant.assignedRoomId || r.currentTenantName === tenant.name) || { name: 'ยังไม่ระบุ' };
 
         const invoices = this.state.invoices || [];
-        const invIdx = invoices.findIndex(i => i.roomId === room.id || i.tenantName === tenant.name);
+        const invIdx = invoices.findIndex(i => i.invoiceNumber === MyBillsApp.activeInvoiceNumber);
 
         const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -592,7 +642,7 @@ class MyBillsApp {
     const invoices = this.state.invoices || [];
     const room = rooms.find(r => r.id === tenant.assignedRoomId || r.currentTenantName === tenant.name) || { name: tenant.assignedRoomId || 'S101' };
     
-    const inv = invParam || invoices.find(i => i.roomId === room.id || i.roomName === room.name || i.tenantName === tenant.name) || {
+    const inv = invParam || invoices.find(i => i.invoiceNumber === MyBillsApp.activeInvoiceNumber) || invoices.find(i => i.roomId === room.id || i.roomName === room.name || i.tenantName === tenant.name) || {
       invoiceNumber: 'INV' + new Date().toISOString().slice(0, 7).replace('-', '') + '-' + (room.name || 'S101'),
       monthKey: new Date().toISOString().slice(0, 7), roomName: room.name || 'S101', tenantName: tenant ? tenant.name : 'ผู้เช่า',
       issueDate: new Date().toISOString().slice(0, 10), dueDate: new Date().toISOString().slice(0, 7) + '-05',
@@ -727,7 +777,7 @@ class MyBillsApp {
     const invoices = this.state.invoices || [];
     const room = rooms.find(r => r.id === tenant.assignedRoomId || r.currentTenantName === tenant.name) || { name: 'ยังไม่ระบุ' };
     
-    const inv = invParam || invoices.find(i => i.roomId === room.id || i.tenantName === tenant.name) || {
+    const inv = invParam || invoices.find(i => i.invoiceNumber === MyBillsApp.activeInvoiceNumber) || invoices.find(i => i.roomId === room.id || i.tenantName === tenant.name) || {
       invoiceNumber: 'INV202607-101', monthKey: '2026-07', roomName: room.name, tenantName: tenant.name,
       issueDate: new Date().toISOString().slice(0, 10), dueDate: new Date().toISOString().slice(0, 10),
       rentAmount: 3500, elecAmount: 500, waterAmount: 200, trashFee: 20, totalAmount: 4220, paidAmount: 4220

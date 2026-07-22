@@ -237,7 +237,7 @@ class MyBillsApp {
               <option value="">-- เลือกห้องพักของคุณ --</option>
               ${rooms.map(r => `
                 <option value="${r.id}">
-                  ห้อง ${r.name} (${r.currentTenantName && r.currentTenantName !== 'ไม่มีผู้เข้าเช่า' ? r.currentTenantName : 'ห้องเช่า'})
+                  ห้อง ${r.name}
                 </option>
               `).join('')}
             </select>
@@ -662,7 +662,7 @@ class MyBillsApp {
         <button class="close-modal-btn" style="color:#ffffff;">&times;</button>
       </div>
       <div class="modal-body" style="padding:1.5rem;">
-        <div id="printable-bill-area" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:1.75rem; font-family:sans-serif; color:#0f172a;">
+        <div id="modal-printable-bill-area" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:1.75rem; font-family:sans-serif; color:#0f172a;">
           
           <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #2563eb; padding-bottom:1rem; margin-bottom:1.25rem;">
             <div>

@@ -822,11 +822,11 @@ body {
     }
     
     #print-receipt-area, #print-receipt-area *,
-    #printable-bill-area, #printable-bill-area * {
+    #modal-printable-bill-area, #modal-printable-bill-area * {
         visibility: visible !important;
     }
     
-    #print-receipt-area, #printable-bill-area {
+    #print-receipt-area, #modal-printable-bill-area {
         display: block !important;
         position: absolute !important;
         left: 0 !important;

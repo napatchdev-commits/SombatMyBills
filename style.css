@@ -821,11 +821,12 @@ body {
         visibility: hidden !important;
     }
     
-    #print-receipt-area, #print-receipt-area * {
+    #print-receipt-area, #print-receipt-area *,
+    #printable-bill-area, #printable-bill-area * {
         visibility: visible !important;
     }
     
-    #print-receipt-area {
+    #print-receipt-area, #printable-bill-area {
         display: block !important;
         position: absolute !important;
         left: 0 !important;
